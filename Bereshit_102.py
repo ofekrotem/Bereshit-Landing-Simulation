@@ -166,7 +166,7 @@ def main(simulation=1, first_distance_from_moon=first_distance_from_moon):
         print(tocsv[0])
     NN = 0.7  # rate[0,1]
 
-    last_ver_error = last_ver_diff = vertical_speed
+    last_ver_error = last_ver_diff = last_ver_speed = vertical_speed
     last_hor_error = last_hor_diff = horizontal_speed
 
     # ***** main simulation loop ******
@@ -175,7 +175,7 @@ def main(simulation=1, first_distance_from_moon=first_distance_from_moon):
             tocsv.append(
                 [_time, vertical_speed, horizontal_speed, dist, distance_from_moon, angle, weight, acceleration, fuel])
             print(tocsv[-1])
-        if distance_from_moon > 500:
+        if distance_from_moon > 300:
             desired_ver_speed = calcDesiredSpeed(distance_from_moon, vertical_speed)
             desired_hor_speed = calcDesiredSpeed(distance_from_moon, horizontal_speed)
             ver_error = calcError(vertical_speed, desired_ver_speed)
@@ -205,20 +205,28 @@ def main(simulation=1, first_distance_from_moon=first_distance_from_moon):
                     else:
                         NN = adjustSpeed(NN, -0.003 * NN)
 
-            if horizontal_speed < 2:
-                horizontal_speed = 0
-        else:  # very close to the ground!
-            NN = 1
-            if vertical_speed < 5:
-                NN = 0.7  # if it is slow enough - go easy on the brakes
+        else:
             if angle != 0:
-                angle = adjustAngle(angle, -3)
-            if distance_from_moon < 5:  # no need to stop
-                NN = 0.4
+                angle = adjustAngle(angle, -5)
 
+            if vertical_speed > 10:
+                NN = 1
+                print(f"NN: {NN}")
+            elif 3 < vertical_speed < last_ver_speed:
+                NN = float(str(f"0.{int(str(vertical_speed)[0])+1}"))
+                print(f"NN based on last speed: {NN}")
+            elif 0 < vertical_speed > 3:
+                NN = 0.5
+                print(f"NN: {NN}")
+            else:
+                NN = 0
+                print(f"NN: {NN}")
+
+        if horizontal_speed < 2:
+            horizontal_speed = 0
         last_hor_error = hor_error
         last_ver_error = ver_error
-
+        last_ver_speed = vertical_speed
         last_hor_diff = hor_diff
         last_ver_diff = ver_diff
 
