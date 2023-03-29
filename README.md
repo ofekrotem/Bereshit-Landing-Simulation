@@ -1,5 +1,8 @@
 # Bereshit-Landing-Simulation
 
+- Ofek Rotem
+- Yonatan Tal
+
 ## Requirments
 - pygame
 
