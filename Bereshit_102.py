@@ -1,10 +1,13 @@
-import math
 import csv
-import time
-import pygame
+import math
 import os
+import time
+
+import pygame
 
 # pygame init
+from PID import PID
+
 pygame.font.init()
 pygame.mixer.init()
 first_distance_from_moon = 13748  # 2:25:40 (as in the simulation) // https://www.youtube.com/watch?v=JJ0VfRL9AMs
@@ -113,12 +116,21 @@ def makeCsv(l, folder='logs', csvname='bereshit_102'):
 
 
 def calcDesiredSpeed(distance_from_moon, curr_speed):
-    if distance_from_moon < 5:
-        return 0
     if curr_speed == 0:
         return distance_from_moon
+    if distance_from_moon < 1000:
+        print(f"Dist: {distance_from_moon}")
+        print(f"Time: {distance_from_moon} / {curr_speed} = {distance_from_moon / curr_speed}")
+        print(
+            f"Desired: {curr_speed} - ({curr_speed} / ({distance_from_moon / curr_speed})) = {curr_speed - (curr_speed / (distance_from_moon / curr_speed))}")
+        print("************************************************************************************")
+    if distance_from_moon < 500:
+        return 0
+
     time = distance_from_moon / curr_speed
-    return curr_speed - (curr_speed / time)
+    desired_speed = curr_speed - (curr_speed / time)
+    if (desired_speed < 3): desired_speed = 0
+    return desired_speed
 
 
 def calcError(curr_speed, desired_speed):
@@ -143,7 +155,6 @@ def adjustSpeed(curr_NN, desired_change):
         return curr_NN + desired_change
 
 
-# 14095, 955.5, 24.8, 2.0
 def main(simulation=1, first_distance_from_moon=first_distance_from_moon):
     tocsv = []
     spaceship = pygame.Rect(0, 0, SPACESHIP_WIDTH, SPACESHIP_HEIGHT)
@@ -161,75 +172,62 @@ def main(simulation=1, first_distance_from_moon=first_distance_from_moon):
     print(f"simulation {simulation} started")
     if simulation == 1:
         print("Simulating Bereshit's Landing:")
-        tocsv.append(['time', 'vertical_speed', 'horizontal_speed', 'dist', 'distance_from_moon', 'angle', 'weight',
-                      'acceleration', 'fuel'])
+        tocsv.append(
+            ['time', 'vertical_speed', 'dvs', 'VP', 'VI', 'VD', 'VPID', 'horizontal_speed',
+             'dist',
+             'distance_from_moon', 'angle', 'weight',
+             'acceleration', 'fuel'])
         print(tocsv[0])
     NN = 0.7  # rate[0,1]
+    last_NN=NN
+    desired_ver_speed = 25
+    v_pid = PID(0.04, 0.0003, 0.2)
 
-    last_ver_error = last_ver_diff = last_ver_speed = vertical_speed
-    last_hor_error = last_hor_diff = horizontal_speed
-
+    v_pid_args = v_pid.run(vertical_speed, desired_ver_speed)
+    vp = v_pid_args[0]
+    vi = v_pid_args[1]
+    vd = v_pid_args[2]
+    v_tot = v_pid_args[3]
+    last_v_tot = v_tot
     # ***** main simulation loop ******
     while distance_from_moon > 0:
-        if simulation == 1 and (_time % 10 == 0 or distance_from_moon < 100):
+        if simulation == 1:
             tocsv.append(
-                [_time, vertical_speed, horizontal_speed, dist, distance_from_moon, angle, weight, acceleration, fuel])
+                [_time, vertical_speed, desired_ver_speed, vp, vi, vd, v_tot, horizontal_speed, dist,
+                 distance_from_moon, angle, weight, acceleration, fuel])
             print(tocsv[-1])
-        if distance_from_moon > 300:
-            desired_ver_speed = calcDesiredSpeed(distance_from_moon, vertical_speed)
-            desired_hor_speed = calcDesiredSpeed(distance_from_moon, horizontal_speed)
-            ver_error = calcError(vertical_speed, desired_ver_speed)
-            hor_error = calcError(horizontal_speed, desired_hor_speed)
 
-            ver_diff = abs(ver_error) - abs(last_ver_error)
-            hor_diff = abs(hor_error) - abs(last_hor_error)
+        if distance_from_moon > 1000:
+            if vertical_speed > 30 or vertical_speed < 20:
+                NN = adjustSpeed(last_NN,last_v_tot)
+            print("vertical PID\n")
+            v_pid_args = v_pid.run(vertical_speed, desired_ver_speed)
+            vp = v_pid_args[0]
+            vi = v_pid_args[1]
+            vd = v_pid_args[2]
+            v_tot = v_pid_args[3]
 
-            ver_diff_of_diff = abs(ver_diff) - abs(last_ver_diff)
-            hor_diff_of_diff = abs(hor_diff) - abs(last_hor_diff)
-
-            if abs(ver_diff_of_diff) >= abs(hor_diff_of_diff):
-                print(f"ver_dif = {ver_diff}")
-                if ver_diff > 0:
-                    angle = adjustAngle(angle, -3)
-                    if ver_error > 0:
-                        NN = adjustSpeed(NN, 0.003 * NN)
-                    else:
-                        NN = adjustSpeed(NN, -0.003 * NN)
-
-            else:
-                print(f"hor_diff = {hor_diff}")
-                if hor_diff > 0:
-                    angle = adjustAngle(angle, 3)
-                    if hor_error > 0:
-                        NN = adjustSpeed(NN, 0.003 * NN)
-                    else:
-                        NN = adjustSpeed(NN, -0.003 * NN)
 
         else:
             if angle != 0:
-                angle = adjustAngle(angle, -5)
-
-            if vertical_speed > 10:
+                angle = adjustAngle(angle, -3)
+            if vertical_speed > 20:
                 NN = 1
                 print(f"NN: {NN}")
-            elif 3 < vertical_speed < last_ver_speed:
-                NN = float(str(f"0.{int(str(vertical_speed)[0])+1}"))
-                print(f"NN based on last speed: {NN}")
-            elif 0 < vertical_speed > 3:
-                NN = 0.5
-                print(f"NN: {NN}")
+            elif 15 < vertical_speed <=20:
+                NN = 0.7
+            elif 2 < vertical_speed <= 15:
+                NN= 0.6
             else:
                 NN = 0
                 print(f"NN: {NN}")
 
         if horizontal_speed < 2:
             horizontal_speed = 0
-        last_hor_error = hor_error
-        last_ver_error = ver_error
-        last_ver_speed = vertical_speed
-        last_hor_diff = hor_diff
-        last_ver_diff = ver_diff
+        last_v_tot = v_tot
+        last_NN=NN
 
+        if distance_from_moon == 0: break
         # main computations
         ang_rad = math.radians(angle)
         h_acc = math.sin(ang_rad) * acceleration
